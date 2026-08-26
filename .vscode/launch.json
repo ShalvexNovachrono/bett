@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug bett",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bett/bett.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/bett",
+            "environment": [],
+            "console": "integratedTerminal",
+            "preLaunchTask": "CMake: Build"
+        }
+    ]
+}

@@ -1,0 +1,10 @@
+/build/
+/vcpkg_installed/
+/.cache/
+/.vs/
+compile_commands.json
+*.user
+*.pdb
+*.ilk
+*.exe
+*.obj

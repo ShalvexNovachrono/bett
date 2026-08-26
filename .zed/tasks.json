@@ -1,0 +1,18 @@
+[
+  {
+    "label": "CMake: Configure",
+    "command": "cmd /c configure.bat",
+  },
+  {
+    "label": "CMake: Build",
+    "command": "cmd /c build.bat",
+  },
+  {
+    "label": "Run",
+    "command": "cmd /c run.bat",
+  },
+  {
+    "label": "Build & Run",
+    "command": "cmd /c abr.bat",
+  },
+]
