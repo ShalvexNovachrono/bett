@@ -1,29 +1,50 @@
-# Bett
+﻿# Bett
 
-A basic ECS library for GameObjects and components.
+A lightweight, header-only C++17 ECS (Entity Component System) and Task Scheduler.
 
-## Create ECS Instance
+## Include
 
-Initializes the ECS manager.
+Include the single header to access both ECS and Scheduler:
 
 ```cpp
-CBett bett;
+#include "bett.h"
 ```
 
-## Attach Custom Warning Logger
+Or include them separately:
+```cpp
+#include "bett_ecs.h"
+#include "bett_scheduler.h"
+```
 
-Redirect internal Bett warnings to a custom logger or callback (defaults to `std::cerr` if omitted).
+---
+
+## Part 1: ECS (`CBettECS`)
+
+### Create ECS Instance
 
 ```cpp
-bett.AttachWarningAPI([](const std::string& message) {
-    // Forward to custom logging system
-    std::cout << message << std::endl;
+CBettECS bett;
+```
+
+### Attach Custom Loggers (Optional)
+
+Redirect internal Bett logs to your own logger:
+
+```cpp
+bett.AttachDebugAPI([](const std::string& msg) {
+    std::cout << "[DEBUG] " << msg << std::endl;
+});
+
+bett.AttachWarningAPI([](const std::string& msg) {
+    std::cout << "[WARN] " << msg << std::endl;
+});
+
+bett.AttachErrorAPI([](const std::string& msg) {
+    std::cerr << "[ERROR] " << msg << std::endl;
 });
 ```
 
-## Define Components
-
-Simple data structs used by the ECS.
+### Define Components
 
 ```cpp
 struct Position {
@@ -37,148 +58,126 @@ struct Velocity {
 };
 ```
 
-## Create Game Object
-
-Spawns a new GameObject with a unique ID.
+### Create Game Object
 
 ```cpp
 GameObject player = bett.CreateGameObject();
-```
-
-## Get Entity ID
-
-Returns the unique integer ID of the GameObject.
-
-```cpp
 EntityID id = player.ID();
 ```
 
-## Add Component (GameObject)
-
-Attaches a component to the GameObject.
+### Add Components
 
 ```cpp
+// Via GameObject
 player.AddComponent<Position>(10.0f, 20.0f);
 player.AddComponent<Velocity>(1.0f, 2.0f);
-```
 
-## Add Component (CBett)
-
-Attaches a component directly via EntityID.
-
-```cpp
+// Via EntityID
 bett.AddComponent<Position>(id, 10.0f, 20.0f);
 ```
 
-## Check Component (GameObject)
-
-Checks if the GameObject has a component.
+### Check Components
 
 ```cpp
 bool hasPos = player.Has<Position>();
+bool hasPosById = bett.Has<Position>(id);
 ```
 
-## Check Component (CBett)
-
-Checks if an EntityID has a component.
-
-```cpp
-bool hasPos = bett.Has<Position>(id);
-```
-
-## Get Component (GameObject)
-
-Retrieves a reference to a component on the GameObject.
+### Get Components
 
 ```cpp
 Position& pos = player.GetComponent<Position>();
 pos.x += 5.0f;
+
+Position& posById = bett.GetComponent<Position>(id);
 ```
 
-## Get Component (CBett)
-
-Retrieves a reference to a component using EntityID.
-
-```cpp
-Position& pos = bett.GetComponent<Position>(id);
-```
-
-## Remove Component (GameObject)
-
-Removes a component from the GameObject.
+### Remove Components
 
 ```cpp
 player.RemoveComponent<Velocity>();
-```
-
-## Remove Component (CBett)
-
-Removes a component using EntityID.
-
-```cpp
 bett.RemoveComponent<Velocity>(id);
 ```
 
-## Check If Game Object Exists
-
-Verifies whether a GameObject or EntityID is active.
+### Check & Destroy Game Objects
 
 ```cpp
 bool exists = bett.DoesGameObjectExist(player);
-bool existsById = bett.DoesGameObjectExist(id);
-```
 
-## Remove Game Object
-
-Destroys a GameObject and cleans up its components.
-
-```cpp
+// Destroy
 bett.RemoveGameObject(player);
-bett.RemoveGameObject(id);
-```
 
-## Remove Game Object With Callback
-
-Conditionally removes a GameObject using a validation callback.
-
-```cpp
+// Destroy with conditional callback
 bett.RemoveGameObject(player, [](EntityID entity) -> bool {
     return true;
 });
 ```
 
-## Get All Entities
-
-Returns a const reference to the list of all active EntityIDs.
+### Query & Iterate
 
 ```cpp
+// Get all active entities
 const std::vector<EntityID>& entities = bett.AllEntities();
-```
 
-## Get All Game Objects
-
-Returns a list of all active GameObject instances.
-
-```cpp
+// Get all active GameObjects
 std::vector<GameObject> objects = bett.AllGameObjects();
-```
 
-## Iterate Game Objects
-
-Executes a function for each active GameObject.
-
-```cpp
+// Iterate through GameObjects
 bett.forEachGameObjects([](GameObject go) {
     // Process game object
 });
 ```
 
-## Access Component Store
-
-Retrieves the underlying contiguous packed container for batch updates.
+### Access Packed Component Stores
 
 ```cpp
 auto& store = bett.Store<Position>();
 std::vector<Position>& allPositions = store.All();
 std::vector<EntityID>& allEntities = store.Entities();
+```
+
+---
+
+## Part 2: Task Scheduler (`CBettScheduler`)
+
+### Create Scheduler Instance
+
+```cpp
+CBettScheduler scheduler;
+```
+
+### Add Tasks
+
+Register functions, lambdas, or member functions with arguments across stages:
+
+```cpp
+void InitWindow(int width, int height);
+void UpdatePhysics(float dt);
+
+// System Initialization (runs once and clears)
+scheduler.AddTask(SchedulerCallOrder::SystemInit, InitWindow, 1920, 1080);
+
+// System Update (runs every frame)
+scheduler.AddTask(SchedulerCallOrder::SystemUpdate, UpdatePhysics, 0.016f);
+
+// Render Stages
+scheduler.AddTask(SchedulerCallOrder::Render3D, []() {
+    // Render 3D scene
+});
+
+scheduler.AddTask(SchedulerCallOrder::Render2D, []() {
+    // Render UI / overlays
+});
+```
+
+### Run Tasks
+
+```cpp
+// Execute a specific stage:
+scheduler.ExecuteTasks(SchedulerCallOrder::SystemUpdate);
+
+// Or run all stages in sequence in your game loop:
+while (running) {
+    scheduler.Run();
+}
 ```

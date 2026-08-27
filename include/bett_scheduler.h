@@ -22,6 +22,9 @@ enum SchedulerCallOrder {
 };
 
 class CBettScheduler {
+public:
+    using LoggerAPI = void (*)(const std::string&);
+
 private:
     // Parent task interface
     class BTask {
@@ -47,7 +50,6 @@ private:
 
     std::unordered_map<SchedulerCallOrder, std::vector<std::unique_ptr<BTask>>> tasks;
 
-    using LoggerAPI = void (*)(const std::string&);
     LoggerAPI debugAPI   = nullptr;
     LoggerAPI warningAPI = nullptr;
     LoggerAPI errorAPI   = nullptr;
@@ -76,10 +78,7 @@ public:
 
     void ExecuteTasks(SchedulerCallOrder stage) {
         auto it = tasks.find(stage);
-        if (it == tasks.end()) {
-            BettBLogWarning("No tasks found for stage: ", static_cast<int>(stage));
-            return;
-        }
+        if (it == tasks.end()) return;
 
         for (auto& task : it->second) {
             task->Execute();

@@ -32,7 +32,7 @@ public:
         assert(!Has(id) && "Entity already has this component");
         size_t index = components.size();
         components.emplace_back(std::forward<Args>(args)...);
-        entityList.push_back(id);\
+        entityList.push_back(id);
         entityToIndex[id] = index;
         return components[index];
     }
@@ -97,21 +97,20 @@ public:
     EntityID ID() const { return id; }
 };
 
-
-
 class CBettECS {
+public:
+    using LoggerAPI = void (*)(const std::string&);
+
 private:
     EntityID nextEntityID = 0;
     std::vector<EntityID> discardedEntityId{};
     std::vector<EntityID> inUseEntityID{};
     std::unordered_map<std::type_index, std::unique_ptr<CBasicComponentContainerFoundation>> stores;
 
-    using LoggerAPI = void (*)(const std::string&);
-    // no clue on how to store function in a variable and that function takes parameter with type string 
-    // (i gave up and went with functional thing) nvm
     LoggerAPI debugAPI   = nullptr;
     LoggerAPI warningAPI = nullptr;
     LoggerAPI errorAPI   = nullptr;
+
 public:
     CBettECS() = default;
 
