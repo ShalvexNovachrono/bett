@@ -3,7 +3,9 @@
 
 #include "bett_ecs.h"
 #include <cstdint>
+#include <iostream>
 #include <memory>
+#include <sstream>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -45,8 +47,25 @@ private:
 
     std::unordered_map<SchedulerCallOrder, std::vector<std::unique_ptr<BTask>>> tasks;
 
+    using LoggerAPI = void (*)(const std::string&);
+    LoggerAPI debugAPI   = nullptr;
+    LoggerAPI warningAPI = nullptr;
+    LoggerAPI errorAPI   = nullptr;
+
 public:
     CBettScheduler() = default;
+
+    void AttachDebugAPI(LoggerAPI debugApiFunc) {
+        debugAPI = debugApiFunc;
+    }
+
+    void AttachWarningAPI(LoggerAPI warningApiFunc) {
+        warningAPI = warningApiFunc;
+    }
+
+    void AttachErrorAPI(LoggerAPI errorApiFunc) {
+        errorAPI = errorApiFunc;
+    }
 
     template <typename Func, typename... Args>
     void AddTask(SchedulerCallOrder stage, Func func, Args&&... args) {
@@ -57,7 +76,10 @@ public:
 
     void ExecuteTasks(SchedulerCallOrder stage) {
         auto it = tasks.find(stage);
-        if (it == tasks.end()) return;
+        if (it == tasks.end()) {
+            BettBLogWarning("No tasks found for stage: ", static_cast<int>(stage));
+            return;
+        }
 
         for (auto& task : it->second) {
             task->Execute();
@@ -76,6 +98,49 @@ public:
         ExecuteTasks(SchedulerCallOrder::GameObjectUpdate);
         ExecuteTasks(SchedulerCallOrder::Render3D);
         ExecuteTasks(SchedulerCallOrder::Render2D);
+    }
+
+private:
+    // Internal Logger //
+
+    template <typename... Args>
+    void BettBLogDebug(Args&&... args) {
+        std::ostringstream oss;
+        oss << "[Bett Debug] ";
+
+        (oss << ... << std::forward<Args>(args));
+
+        if (debugAPI != nullptr)
+            debugAPI(oss.str());
+        else
+            std::cout << oss.str() << "\n";
+    }
+
+    template <typename... Args>
+    void BettBLogWarning(Args&&... args) {
+        std::ostringstream oss;
+        // https://stackoverflow.com/questions/12233710/how-do-i-use-the-ostringstream-properly-in-c
+        oss << "[Bett Warning] ";
+
+        (oss << ... << std::forward<Args>(args));
+
+        if (warningAPI != nullptr)
+            warningAPI(oss.str());
+        else
+            std::cerr << oss.str() << "\n";
+    }
+
+    template <typename... Args>
+    void BettBLogError(Args&&... args) {
+        std::ostringstream oss;
+        oss << "[Bett Error] ";
+
+        (oss << ... << std::forward<Args>(args));
+
+        if (errorAPI != nullptr)
+            errorAPI(oss.str());
+        else
+            std::cerr << oss.str() << "\n";
     }
 };
 
