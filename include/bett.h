@@ -1,12 +1,14 @@
 #ifndef Bett
 #define Bett
 
-#include "Logger.h"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <memory>
+#include <ostream>
+#include <sstream>
 #include <typeindex>
 #include <unordered_map>
 #include <utility>
@@ -95,6 +97,8 @@ public:
     EntityID ID() const { return id; }
 };
 
+
+
 class CBett {
 private:
     EntityID nextEntityID = 0;
@@ -102,8 +106,16 @@ private:
     std::vector<EntityID> inUseEntityID{};
     std::unordered_map<std::type_index, std::unique_ptr<CBasicComponentContainerFoundation>> stores;
 
+    using LoggerAPI = void (*)(const std::string&);
+    // no clue on how to store function in a variable and that function takes parameter with type string 
+    // (i gave up and went with functional thing) nvm
+    LoggerAPI warningAPI = nullptr;
 public:
     CBett() = default;
+
+    void AttachWarningAPI(LoggerAPI warningApiFunc) {
+        warningAPI = warningApiFunc;
+    }
 
     GameObject CreateGameObject() {
         return {GiveNextAvailableEntityID(), *this};
@@ -182,16 +194,34 @@ public:
         return GetStore<T>();
     }
 private:
+    // Internal Logger //
+
+    template <typename... Args>
+    std::ostream& BettBLogWarning(Args&&... args) {
+        std::ostringstream oss;
+        // https://stackoverflow.com/questions/12233710/how-do-i-use-the-ostringstream-properly-in-c 
+        oss << "[Bett Warning] ";
+        
+        (oss << ... << std::forward<Args>(args));
+        
+        if (warningAPI != nullptr)
+            warningAPI(oss.str());
+        else 
+            std::cerr << oss.str() << "\n";
+    }
+
+private:
+    
     bool DestroyGameObject(EntityID entity) {
         if (entity >= nextEntityID) {
-            BLogWarning("Can't Remove/Destroy GameObject that doesn't exist. (GameObject) EntityID: " << entity << ".");
+            BettBLogWarning("Can't Remove/Destroy GameObject that doesn't exist. (GameObject) EntityID: ", entity, ".");
             return false;
         }
 
         auto elementIndex = std::find(inUseEntityID.begin(), inUseEntityID.end(), entity);
 
         if (elementIndex == inUseEntityID.end()) {
-            BLogWarning("GameObject is already destroyed. EntityID: " << entity << ".");
+            BettBLogWarning("GameObject is already destroyed. EntityID: ", entity, ".");
             return false;
         }
 
