@@ -1,6 +1,17 @@
 ﻿# Bett
 
-A lightweight, header-only C++17 ECS (Entity Component System) and Task Scheduler.
+Basic ECS and Task Scheduler
+
+<details>
+  <summary><b>View Development & AI Logs</b></summary>
+  <ul>
+    <li>Used AI to generate the initial README structure.</li>
+    <li>Fixed minor code issues and bugs.</li>
+    <li>Moved code between files for better organisation.</li>
+    <li>Duplicated existing code patterns where necessary.</li>
+  </ul>
+</details>
+
 
 ## Include
 
