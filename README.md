@@ -10,6 +10,17 @@ Initializes the ECS manager.
 CBett bett;
 ```
 
+## Attach Custom Warning Logger
+
+Redirect internal Bett warnings to a custom logger or callback (defaults to `std::cerr` if omitted).
+
+```cpp
+bett.AttachWarningAPI([](const std::string& message) {
+    // Forward to custom logging system
+    std::cout << message << std::endl;
+});
+```
+
 ## Define Components
 
 Simple data structs used by the ECS.
