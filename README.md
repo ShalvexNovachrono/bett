@@ -1,6 +1,6 @@
 ﻿# Bett
 
-Basic ECS and Task Scheduler
+Basic ECS, Task Scheduler, and Thread Pool
 
 <details>
   <summary><b>View Development & AI Logs</b></summary>
@@ -15,7 +15,7 @@ Basic ECS and Task Scheduler
 
 ## Include
 
-Include the single header to access both ECS and Scheduler:
+Include the single header to access ECS, Scheduler, and Thread Pool:
 
 ```cpp
 #include "bett.h"
@@ -25,6 +25,7 @@ Or include them separately:
 ```cpp
 #include "bett_ecs.h"
 #include "bett_scheduler.h"
+#include "bett_threadpool.h"
 ```
 
 ---
@@ -35,24 +36,6 @@ Or include them separately:
 
 ```cpp
 CBettECS bett;
-```
-
-### Attach Custom Loggers (Optional)
-
-Redirect internal Bett logs to your own logger:
-
-```cpp
-bett.AttachDebugAPI([](const std::string& msg) {
-    std::cout << "[DEBUG] " << msg << std::endl;
-});
-
-bett.AttachWarningAPI([](const std::string& msg) {
-    std::cout << "[WARN] " << msg << std::endl;
-});
-
-bett.AttachErrorAPI([](const std::string& msg) {
-    std::cerr << "[ERROR] " << msg << std::endl;
-});
 ```
 
 ### Define Components
@@ -162,8 +145,12 @@ CBettScheduler scheduler;
 Register functions, lambdas, or member functions with arguments across stages:
 
 ```cpp
+void InitOpenGL();
 void InitWindow(int width, int height);
 void UpdatePhysics(float dt);
+
+// OpenGL Initialization (runs once and clears)
+scheduler.AddTask(SchedulerCallOrder::OpenglInit, InitOpenGL);
 
 // System Initialization (runs once and clears)
 scheduler.AddTask(SchedulerCallOrder::SystemInit, InitWindow, 1920, 1080);
@@ -192,3 +179,79 @@ while (running) {
     scheduler.Run();
 }
 ```
+
+---
+
+## Part 3: Thread Pool (`CBettThreadPool`)
+
+### Create Thread Pool Instance
+
+```cpp
+// Create a thread pool with 4 worker threads (default is 2)
+CBettThreadPool pool(4);
+```
+
+### Enqueue Tasks
+
+Submit functions or lambdas with any arguments to the thread pool:
+
+```cpp
+void ProcessData(int id, float multiplier);
+
+// Enqueue a free function with arguments
+pool.Enqueue(ProcessData, 1, 2.5f);
+
+// Enqueue a lambda
+pool.Enqueue([]() {
+    // Perform heavy background calculation or asset loading
+});
+```
+
+### Wait for All Tasks to Finish
+
+Block the calling thread until all queued and active tasks complete:
+
+```cpp
+pool.WaitAll();
+```
+
+---
+
+## Additional: Logger API
+
+All core Bett modules provide custom logging hooks (`LoggerAPI`), allowing you to redirect internal debug, warning, and error messages to your own logging system, console, or file sink.
+
+### Logger Function Signature
+
+```cpp
+using LoggerAPI = void (*)(const std::string&);
+```
+
+### Attaching Custom Loggers
+
+You can attach your custom log functions to any instance using `AttachDebugAPI`, `AttachWarningAPI`, and `AttachErrorAPI`:
+
+```cpp
+// Example: Attaching custom loggers to an instance
+instance.AttachDebugAPI([](const std::string& msg) {
+    std::cout << "[DEBUG] " << msg << std::endl;
+});
+
+instance.AttachWarningAPI([](const std::string& msg) {
+    std::cout << "[WARN] " << msg << std::endl;
+});
+
+instance.AttachErrorAPI([](const std::string& msg) {
+    std::cerr << "[ERROR] " << msg << std::endl;
+});
+```
+
+If no custom logger is attached, internal messages fallback to standard output (`std::cout` for debug, `std::cerr` for warnings and errors).
+
+### Headers With Their Own Logger API Instance
+
+Each of the following header files contains its own independent `LoggerAPI` hooks:
+
+* **`bett_ecs.h`** (`CBettECS`) — Logs missing/duplicate components and entity lifecycle warnings. Automatically forwards attached loggers to component stores.
+* **`bett_scheduler.h`** (`CBettScheduler`) — Logs task scheduling warnings and execution diagnostics.
+* **`bett_threadpool.h`** (`CBettThreadPool`) — Logs thread pool status, worker exceptions, and lifecycle events.

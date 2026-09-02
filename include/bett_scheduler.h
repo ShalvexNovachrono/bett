@@ -1,10 +1,8 @@
 ﻿#ifndef BettScheduler
 #define BettScheduler
 
-#include "bett_ecs.h"
-#include <cstdint>
+#include <functional>
 #include <iostream>
-#include <memory>
 #include <sstream>
 #include <tuple>
 #include <unordered_map>
@@ -12,6 +10,7 @@
 #include <vector>
 
 enum SchedulerCallOrder {
+    OpenglInit,
     SystemInit,
     SystemUpdate,
     GameObjectInit,
@@ -24,8 +23,10 @@ enum SchedulerCallOrder {
 class CBettScheduler {
 public:
     using LoggerAPI = void (*)(const std::string&);
+    using Task = std::function<void()>;
 
 private:
+    /*
     // Parent task interface
     class BTask {
     public:
@@ -47,8 +48,9 @@ private:
             std::apply(func, args);
         }
     };
+    */
 
-    std::unordered_map<SchedulerCallOrder, std::vector<std::unique_ptr<BTask>>> tasks;
+    std::unordered_map<SchedulerCallOrder, std::vector<Task>> tasks;
 
     LoggerAPI debugAPI   = nullptr;
     LoggerAPI warningAPI = nullptr;
@@ -72,7 +74,14 @@ public:
     template <typename Func, typename... Args>
     void AddTask(SchedulerCallOrder stage, Func func, Args&&... args) {
         tasks[stage].push_back(
-            std::make_unique<TaskUA<Func, std::decay_t<Args>...>>(func, std::forward<Args>(args)...)
+            [
+                func = std::forward<Func>(func), 
+                params = std::make_tuple(std::forward<Args>(args)...)
+            ]
+            ()
+            mutable {
+                std::apply(func, params);
+            }
         );
     }
 
@@ -81,16 +90,19 @@ public:
         if (it == tasks.end()) return;
 
         for (auto& task : it->second) {
-            task->Execute();
+            task();
         }
 
         // Only clear one-time init stages
-        if (stage == SchedulerCallOrder::SystemInit || stage == SchedulerCallOrder::GameObjectInit) {
+        if (stage == SchedulerCallOrder::OpenglInit || 
+            stage == SchedulerCallOrder::SystemInit || 
+            stage == SchedulerCallOrder::GameObjectInit) {
             it->second.clear();
         }
     }
 
     void Run() {
+        ExecuteTasks(SchedulerCallOrder::OpenglInit);
         ExecuteTasks(SchedulerCallOrder::SystemInit);
         ExecuteTasks(SchedulerCallOrder::SystemUpdate);
         ExecuteTasks(SchedulerCallOrder::GameObjectInit);

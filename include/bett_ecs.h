@@ -2,7 +2,6 @@
 #define BettECS
 
 #include <algorithm>
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -19,17 +18,56 @@ static constexpr EntityID NULL_ENTITY = UINT32_MAX;
 
 class CBasicComponentContainerFoundation {
 public:
+    using LoggerAPI = void (*)(const std::string&);
+
     virtual ~CBasicComponentContainerFoundation() = default;
     virtual void Remove(EntityID id) = 0;
     virtual bool Has(EntityID id) const = 0;
+    virtual void AttachLogger(LoggerAPI debug, LoggerAPI warn, LoggerAPI err) = 0;
 };
 
 template <typename T>
 class CComponentContainer : public CBasicComponentContainerFoundation {
+private:
+    LoggerAPI debugAPI   = nullptr;
+    LoggerAPI warningAPI = nullptr;
+    LoggerAPI errorAPI   = nullptr;
+
+    template <typename... Args>
+    void BettBLogWarning(Args&&... args) {
+        std::ostringstream oss;
+        oss << "[Bett Warning] ";
+        (oss << ... << std::forward<Args>(args));
+        if (warningAPI != nullptr)
+            warningAPI(oss.str());
+        else
+            std::cerr << oss.str() << "\n";
+    }
+
+    template <typename... Args>
+    void BettBLogError(Args&&... args) {
+        std::ostringstream oss;
+        oss << "[Bett Error] ";
+        (oss << ... << std::forward<Args>(args));
+        if (errorAPI != nullptr)
+            errorAPI(oss.str());
+        else
+            std::cerr << oss.str() << "\n";
+    }
+
 public:
+    void AttachLogger(LoggerAPI debug, LoggerAPI warn, LoggerAPI err) override {
+        debugAPI   = debug;
+        warningAPI = warn;
+        errorAPI   = err;
+    }
+
     template <typename... Args>
     T& EmplaceComponent(EntityID id, Args&&... args) {
-        assert(!Has(id) && "Entity already has this component");
+        if (Has(id)) {
+            BettBLogWarning("Entity ID ", id, " already has component: ", typeid(T).name());
+            return GetComponent(id);
+        }
         size_t index = components.size();
         components.emplace_back(std::forward<Args>(args)...);
         entityList.push_back(id);
@@ -38,12 +76,17 @@ public:
     }
 
     T& GetComponent(EntityID id) {
-        assert(Has(id) && "Entity does not have this component");
+        if (!Has(id)) {
+            BettBLogError("Entity ID ", id, " does not have component: ", typeid(T).name());
+        }
         return components[entityToIndex.at(id)];
     }
 
     void Remove(EntityID id) override {
-        assert(Has(id) && "Entity does not have this component");
+        if (!Has(id)) {
+            BettBLogWarning("Cannot remove component: Entity ID ", id, " does not have component: ", typeid(T).name());
+            return;
+        }
 
         size_t indexToRemove = entityToIndex[id];
         size_t lastIndex     = components.size() - 1;
@@ -116,14 +159,17 @@ public:
 
     void AttachDebugAPI(LoggerAPI debugApiFunc) {
         debugAPI = debugApiFunc;
+        UpdateStoresLoggers();
     }
 
     void AttachWarningAPI(LoggerAPI warningApiFunc) {
         warningAPI = warningApiFunc;
+        UpdateStoresLoggers();
     }
 
     void AttachErrorAPI(LoggerAPI errorApiFunc) {
         errorAPI = errorApiFunc;
+        UpdateStoresLoggers();
     }
 
     GameObject CreateGameObject() {
@@ -203,6 +249,12 @@ public:
         return GetStore<T>();
     }
 private:
+    void UpdateStoresLoggers() {
+        for (auto& [type, store] : stores) {
+            store->AttachLogger(debugAPI, warningAPI, errorAPI);
+        }
+    }
+
     // Internal Logger //
 
     template <typename... Args>
@@ -292,7 +344,9 @@ private:
     CComponentContainer<T>& GetStore() {
         auto key = std::type_index(typeid(T));
         if (!stores.count(key)) {
-            stores[key] = std::make_unique<CComponentContainer<T>>();
+            auto store = std::make_unique<CComponentContainer<T>>();
+            store->AttachLogger(debugAPI, warningAPI, errorAPI);
+            stores[key] = std::move(store);
         }
         return static_cast<CComponentContainer<T>&>(*stores[key]);
     }

@@ -1,9 +1,9 @@
 #ifndef LoggerHeader
 #define LoggerHeader
 
+#include <cstdlib>
 #include <iostream>
 #include <string>
-#include <cstdlib>
 
 // Color codes for terminals that support ANSI escapes
 #define COLOR_RESET   "\033[0m"
