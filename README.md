@@ -1,6 +1,6 @@
 ﻿# Bett
 
-Basic ECS, Task Scheduler, and Thread Pool
+Basic ECS, Task Scheduler, Thread Pool, and UI System
 
 <details>
   <summary><b>View Development & AI Logs</b></summary>
@@ -15,10 +15,11 @@ Basic ECS, Task Scheduler, and Thread Pool
 
 ## Include
 
-Include the single header to access ECS, Scheduler, and Thread Pool:
+Include the single header or individual modules as needed:
 
 ```cpp
 #include "bett.h"
+#include "bett_uisystem.h"
 ```
 
 Or include them separately:
@@ -26,6 +27,7 @@ Or include them separately:
 #include "bett_ecs.h"
 #include "bett_scheduler.h"
 #include "bett_threadpool.h"
+#include "bett_uisystem.h"
 ```
 
 ---
@@ -217,6 +219,126 @@ pool.WaitAll();
 
 ---
 
+## Part 4: UI System (`CBettUISystem`)
+
+### Create UI System Instance
+
+```cpp
+CBettECS bett;
+CBettUISystem ui(&bett);
+```
+
+### Create UI Elements
+
+`CreateUIElement()` automatically creates a `GameObject` and attaches `UIRectTransform`, `UIHierarchyComponent`, and `UIRenderComponent`:
+
+```cpp
+GameObject button = ui.CreateUIElement();
+```
+
+### Position & Layout (`UIRectTransform`)\n
+```cpp
+auto& transform = button.GetComponent<UIRectTransform>();
+transform.position = glm::vec2(100.0f, 50.0f);
+transform.size     = glm::vec2(220.0f, 64.0f);
+```
+
+### Visual Styling, Rounded Corners & Borders (`UIRenderComponent`)
+
+Define idle, hover, and pressed colors, per-corner radii `(x: Top-Left, y: Top-Right, z: Bottom-Right, w: Bottom-Left)`, and borders `(x: Top, y: Right, z: Bottom, w: Left)`:
+
+```cpp
+auto& render = button.GetComponent<UIRenderComponent>();
+render.normalColor = glm::vec4(0.2f, 0.5f, 0.9f, 1.0f);
+render.hoverColor  = glm::vec4(0.3f, 0.65f, 1.0f, 1.0f);
+render.activeColor = glm::vec4(0.1f, 0.35f, 0.7f, 1.0f);
+render.radius      = glm::vec4(32.0f, 32.0f, 32.0f, 32.0f); // 32px rounded corners
+
+// Set uniform or per-edge border thickness
+render.SetBorder(2.0f); // Uniform 2px border
+// or: render.SetBorder(2.0f, 4.0f, 2.0f, 4.0f); // Top, Right, Bottom, Left
+
+// Set border colors across states
+render.borderColor       = glm::vec4(0.4f, 0.7f, 1.0f, 1.0f);
+render.borderHoverColor  = glm::vec4(0.8f, 0.9f, 1.0f, 1.0f);
+render.borderActiveColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+render.zOrder      = 1;
+```
+
+### Images & Textures (`UIImageComponent`)
+
+Render images/textures with optional UV clipping, color tints, rounded corners, and borders:
+
+```cpp
+auto& img = button.AddComponent<UIImageComponent>();
+img.textureID = myTextureID; // OpenGL Texture ID
+img.uvMin     = glm::vec2(0.0f, 0.0f);
+img.uvMax     = glm::vec2(1.0f, 1.0f);
+img.tint      = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+```
+
+### User Interaction & Callbacks (`UIInteractableComponent`)
+
+Attach interaction callbacks for click and hover events:
+
+```cpp
+auto& interact = button.AddComponent<UIInteractableComponent>();
+
+interact.onClick = [](EntityID id) {
+    std::cout << "Button clicked! ID: " << id << "\n";
+};
+
+interact.onHoverEnter = [&bett](EntityID id) {
+    // Morph corner radius, border thickness, or colors dynamically on hover
+    if (bett.Has<UIRenderComponent>(id)) {
+        auto& render = bett.GetComponent<UIRenderComponent>(id);
+        render.radius = glm::vec4(32.0f, 32.0f, 32.0f, 32.0f);
+        render.SetBorder(4.0f);
+    }
+};
+
+interact.onHoverExit = [&bett](EntityID id) {
+    if (bett.Has<UIRenderComponent>(id)) {
+        auto& render = bett.GetComponent<UIRenderComponent>(id);
+        render.radius = glm::vec4(4.0f, 4.0f, 4.0f, 4.0f);
+        render.SetBorder(2.0f);
+    }
+};
+```
+
+### UI Hierarchy (`UIHierarchyComponent`)
+
+```cpp
+GameObject panel = ui.CreateUIElement();
+panel.GetComponent<UIHierarchyComponent>().children.push_back(button.ID());
+button.GetComponent<UIHierarchyComponent>().parent = panel.ID();
+```
+
+### Custom UI Element Callbacks
+
+Register custom UI update callbacks (e.g. for sliders, color pickers, input fields, scroll views):
+
+```cpp
+ui.AddCustomUIFunction([&]() {
+    // Update custom UI widget logic
+});
+```
+
+### Update UI in Game Loop
+
+Call `Update()` every frame with cursor coordinates, mouse button state, and viewport dimensions. Hit-testing automatically respects corner rounding:
+
+```cpp
+while (running) {
+    glm::vec2 mousePos(cursorX, cursorY);
+    bool isMouseDown = CheckMouseButtonLeft();
+
+    ui.Update(mousePos, isMouseDown, screenWidth, screenHeight);
+}
+```
+
+---
+
 ## Additional: Logger API
 
 All core Bett modules provide custom logging hooks (`LoggerAPI`), allowing you to redirect internal debug, warning, and error messages to your own logging system, console, or file sink.
@@ -247,11 +369,3 @@ instance.AttachErrorAPI([](const std::string& msg) {
 ```
 
 If no custom logger is attached, internal messages fallback to standard output (`std::cout` for debug, `std::cerr` for warnings and errors).
-
-### Headers With Their Own Logger API Instance
-
-Each of the following header files contains its own independent `LoggerAPI` hooks:
-
-* **`bett_ecs.h`** (`CBettECS`) — Logs missing/duplicate components and entity lifecycle warnings. Automatically forwards attached loggers to component stores.
-* **`bett_scheduler.h`** (`CBettScheduler`) — Logs task scheduling warnings and execution diagnostics.
-* **`bett_threadpool.h`** (`CBettThreadPool`) — Logs thread pool status, worker exceptions, and lifecycle events.
