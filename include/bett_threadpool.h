@@ -36,6 +36,10 @@ private:
     std::mutex queueTaskMutex;
     std::condition_variable cvTaskAvailable; // Wakes workers when tasks arrive
     std::condition_variable cvAllIdle;       // Wakes WaitAll() when everything is done
+
+    // the main task runs on the main thread
+    std::mutex mainQueueMutex;
+    std::queue<std::function<void()>> mainTask;
     
     std::atomic<bool> stopFlag{false};
     std::atomic<size_t> activeTasks{0};
@@ -117,6 +121,36 @@ public:
             );
         }
         cvTaskAvailable.notify_one();
+    }
+
+    template <typename Func, typename... Args>
+    void EnqueueMainThread(Func&& func, Args&&... args) {
+        {
+            std::unique_lock<std::mutex> lock(mainQueueMutex);
+
+            mainTask.emplace(
+                [
+                    func = std::forward<Func>(func),
+                    args = std::make_tuple(std::forward<Args>(args)...)
+                ] 
+                () mutable
+                {
+                    std::apply(func, args);
+                }
+            );
+        }
+    }
+
+    void ExecuteMainThreadTasks() {
+        std::queue<std::function<void()>> toRun;
+        {
+            std::lock_guard<std::mutex> lock(mainQueueMutex);
+            std::swap(toRun, mainTask);
+        }
+        while (!toRun.empty()) {
+            toRun.front()(); // gets the task from the front of queue and runs it hence the () after the first ()
+            toRun.pop(); // removes it
+        }
     }
 
     void WaitAll() {

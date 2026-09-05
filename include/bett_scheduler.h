@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+#include "bett_threadpool.h"
+
 enum SchedulerCallOrder {
     OpenglInit,
     SystemInit,
@@ -23,7 +25,11 @@ enum SchedulerCallOrder {
 class CBettScheduler {
 public:
     using LoggerAPI = void (*)(const std::string&);
-    using Task = std::function<void()>;
+    
+    struct ScheduledTask {
+        std::function<void()> func;
+        bool requireMainThread = false;
+    };
 
 private:
     /*
@@ -50,14 +56,19 @@ private:
     };
     */
 
-    std::unordered_map<SchedulerCallOrder, std::vector<Task>> tasks;
+    std::unordered_map<SchedulerCallOrder, std::vector<ScheduledTask>> tasks;
+    CBettThreadPool* pool = nullptr;
 
     LoggerAPI debugAPI   = nullptr;
     LoggerAPI warningAPI = nullptr;
     LoggerAPI errorAPI   = nullptr;
 
 public:
-    CBettScheduler() = default;
+    explicit CBettScheduler(CBettThreadPool* threadPool = nullptr) : pool(threadPool) {}
+
+    void SetThreadPool(CBettThreadPool* threadPool) {
+        pool = threadPool;
+    }
 
     void AttachDebugAPI(LoggerAPI debugApiFunc) {
         debugAPI = debugApiFunc;
@@ -71,16 +82,23 @@ public:
         errorAPI = errorApiFunc;
     }
 
+    // Direct task overload
+    void AddTask(SchedulerCallOrder stage, std::function<void()> task, bool mainThread = false) {
+        tasks[stage].push_back(ScheduledTask{ std::move(task), mainThread });
+    }
+
+    // Task with parameter forwarding
     template <typename Func, typename... Args>
-    void AddTask(SchedulerCallOrder stage, Func func, Args&&... args) {
+    void AddTask(SchedulerCallOrder stage, Func&& func, Args&&... args) {
         tasks[stage].push_back(
-            [
-                func = std::forward<Func>(func), 
-                params = std::make_tuple(std::forward<Args>(args)...)
-            ]
-            ()
-            mutable {
-                std::apply(func, params);
+            ScheduledTask {
+                [
+                    f = std::forward<Func>(func), 
+                    params = std::make_tuple(std::forward<Args>(args)...)
+                ]() mutable {
+                    std::apply(f, params);
+                },
+                false
             }
         );
     }
@@ -89,11 +107,25 @@ public:
         auto it = tasks.find(stage);
         if (it == tasks.end()) return;
 
+        bool hasAsyncTasks = false;
+
         for (auto& task : it->second) {
-            task();
+            if (!task.requireMainThread && pool != nullptr) {
+                // run on the other threads
+                pool->Enqueue(task.func);
+                hasAsyncTasks = true;
+            } else {
+                // run on main thread
+                task.func();
+            }
         }
 
-        // Only clear one-time init stages
+        // wait for all async tasks of this stage to complete before next stage begins
+        if (hasAsyncTasks && pool != nullptr) {
+            pool->WaitAll();
+        }
+
+        // only clear one-time init stages
         if (stage == SchedulerCallOrder::OpenglInit || 
             stage == SchedulerCallOrder::SystemInit || 
             stage == SchedulerCallOrder::GameObjectInit) {
@@ -109,6 +141,12 @@ public:
         ExecuteTasks(SchedulerCallOrder::GameObjectUpdate);
         ExecuteTasks(SchedulerCallOrder::Render3D);
         ExecuteTasks(SchedulerCallOrder::Render2D);
+    }
+
+    void WaitAll() {
+        if (pool != nullptr) {
+            pool->WaitAll();
+        }
     }
 
 private:
